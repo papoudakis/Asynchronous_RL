@@ -35,13 +35,13 @@ checkpoint_interval = 600
 gamma = 0.99
 show_training = True
 num_concurrent = 8
-game = 'Breakout-v0'
+game = ''
 T = 0
 num_eval_episodes = 100
 testing = True
 checkpoint_dir = '/tmp/checkpoints'
 learning_rate = 0.0001
-checkpoint_path = 'path/to/recent.ckpt'
+checkpoint_path = '/tmp/checkpoints/'
 
 
 def create_mdoel(num_actions, agent_history_length, resized_width, resized_height):
@@ -73,8 +73,10 @@ class DQN:
 
         # episodes global counters
         
-
-            self.train(num_actions)
+            if testing:
+                self.test(num_actions)
+            else:
+                self.train(num_actions)
                 
     def create_operations(self, num_actions):
 
@@ -245,24 +247,21 @@ class DQN:
         # Initialize target network weights
         self.session.run(self.update_target)
 
-    # Set up game environments (one per thread)
+        # Set up game environments (one per thread)
         envs = [gym.make(game) for i in range(num_concurrent)]
 
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
-    # Initialize variables
+        # Initialize variables
         self.session.run(tf.initialize_all_variables())
-    #~ summary_save_path = FLAGS.summary_dir + "/" + FLAGS.experiment
-    #~ writer = tf.train.SummaryWriter(summary_save_path, session.graph)
-    #~ if not os.path.exists(FLAGS.checkpoint_dir):
-        #~ os.makedirs(FLAGS.checkpoint_dir)
 
-    # Start num_concurrent actor-learner training threads
+
+        # Start num_concurrent actor-learner training threads
         actor_learner_threads = [threading.Thread(target=self.actor_learner_thread, args=( envs[thread_id], thread_id, num_actions)) for thread_id in range(num_concurrent)]
         for t in actor_learner_threads:
             t.start()
 
-    # Show the agents training and write summary statistics
+        # Show the agents training and write summary statistics
         while True:
             if show_training:
                 for env in envs:
@@ -272,6 +271,29 @@ class DQN:
         for t in actor_learner_threads:
             t.join() 
     
+    def test(self, num_actions):
+        self.saver.restore(self.session, checkpoint_path)
+        print "Restored model weights from ", checkpoint_path
+        monitor_env = gym.make(game)
+        monitor_env.monitor.start("/tmp/" + game ,force=True)
+        env = DoomEnv(monitor_env, width, height, history_length)
+   
+
+
+        for i_episode in xrange(num_eval_episodes):
+            state = env.get_initial_state()
+            episode_reward = 0
+            done = False
+            while not done:
+                monitor_env.render()
+                q_values = self.q_values.eval(session = self.session, feed_dict = {self.state : [state]})
+                action_index = np.argmax(q_values)
+                new_state, reward, done = env.step(action_index)
+                state = new_state
+                episode_reward += reward
+            print "Finished episode " + str(i_episode + 1) + " with score " + str(episode_reward)
+        
+        monitor_env.monitor.close()
 
 
 def main():
