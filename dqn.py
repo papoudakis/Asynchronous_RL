@@ -24,27 +24,31 @@ from environment import DoomEnv
 import time
 import tensorflow as tf
 
-history_length = 4
-width = 84
-height = 84
-TMAX = 800000000
-anneal_epsilon_timesteps = 1000000
-target_network_update_frequency = 10000
-network_update_frequency = 32
-checkpoint_interval = 600
-gamma = 0.99
-show_training = True
-num_concurrent = 8
-game = ''
+flags = tf.app.flags
+flags.DEFINE_string('game', 'ppaquette/DoomBasic-v0', 'Name of the Doom game to play.')
+flags.DEFINE_integer('num_concurrent', 8, 'Number of concurrent actor-learner threads to use during training.')
+flags.DEFINE_integer('tmax', 80000000, 'Number of training timesteps.')
+flags.DEFINE_integer('width', 84, 'Scale screen to this width.')
+flags.DEFINE_integer('height', 84, 'Scale screen to this height.')
+flags.DEFINE_integer('history_length', 4, 'Use this number of recent screens as the environment state.')
+flags.DEFINE_integer('network_update_frequency', 32, 'Frequency with which each actor learner thread does an async gradient update')
+flags.DEFINE_integer('target_network_update_frequency', 10000, 'Reset the target network every n timesteps')
+flags.DEFINE_float('learning_rate', 0.0001, 'Initial learning rate.')
+flags.DEFINE_float('gamma', 0.99, 'Reward discount rate.')
+flags.DEFINE_integer('anneal_epsilon_timesteps', 1000000, 'Number of timesteps to anneal epsilon.')
+flags.DEFINE_string('checkpoint_dir', '/tmp/checkpoints/', 'Directory for storing model checkpoints')
+flags.DEFINE_boolean('show_training', True, 'If true, have gym render evironments during training')
+flags.DEFINE_boolean('testing', False, 'If true, run gym evaluation')
+flags.DEFINE_string('checkpoint_path', 'path/to/recent.ckpt', 'Path to recent checkpoint to use for evaluation')
+flags.DEFINE_integer('num_eval_episodes', 100, 'Number of episodes to run gym evaluation.')
+flags.DEFINE_integer('checkpoint_interval', 600,'Checkpoint the model (i.e. save the parameters) every n ')
+FLAGS = flags.FLAGS
+
+
 T = 0
-num_eval_episodes = 100
-testing = True
-checkpoint_dir = '/tmp/checkpoints'
-learning_rate = 0.0001
-checkpoint_path = '/tmp/checkpoints/'
+TMAX = FLAGS.tmax
 
-
-def create_mdoel(num_actions, agent_history_length, resized_width, resized_height):
+def create_model(num_actions, agent_history_length, resized_width, resized_height):
     with tf.device("/cpu:0"):
         state = tf.placeholder("float", [None, agent_history_length, resized_width, resized_height])
         inputs = Input(shape=(agent_history_length, resized_width, resized_height,))
@@ -59,6 +63,7 @@ def create_mdoel(num_actions, agent_history_length, resized_width, resized_heigh
 class DQN:
     
     def __init__(self, num_actions):
+        
         self.TMAX = TMAX
         self.T = 0
         print "start object"
@@ -73,7 +78,7 @@ class DQN:
 
         # episodes global counters
         
-            if testing:
+            if FLAGS.testing:
                 self.test(num_actions)
             else:
                 self.train(num_actions)
@@ -81,13 +86,13 @@ class DQN:
     def create_operations(self, num_actions):
 
         # create model and state
-        self.state, self.model = create_mdoel(num_actions, history_length, width, height)
+        self.state, self.model = create_model(num_actions, FLAGS.history_length, FLAGS.width, FLAGS.height)
 
         # parameters of the model
         self.model_params = self.model.trainable_weights
 
         # create target network
-        self.new_state, self.target_model = create_mdoel(num_actions,  history_length, width, height)
+        self.new_state, self.target_model = create_model(num_actions,  FLAGS.history_length, FLAGS.width, FLAGS.height)
 
         # parameters of the target model
         self.target_model_params = self.target_model.trainable_weights
@@ -120,7 +125,7 @@ class DQN:
         cost = tf.reduce_mean(tf.square(self.targets - action_q_values))
 
         # define optimazation method
-        optimizer = tf.train.AdamOptimizer(learning_rate)
+        optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate)
 
         # define traininf function
         self.grad_update = optimizer.minimize(cost, var_list=self.model_params)
@@ -136,7 +141,7 @@ class DQN:
 
 
         # create instance of Doom environment
-        env = DoomEnv(env, width, height, history_length)
+        env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
 
 
         # Initialize network gradients
@@ -182,7 +187,7 @@ class DQN:
 
                 # reduce epsilon
                 if epsilon > final_epsilon:
-                    epsilon -= (initial_epsilon - final_epsilon) / anneal_epsilon_timesteps
+                    epsilon -= (initial_epsilon - final_epsilon) / FLAGS.anneal_epsilon_timesteps
 
                 # Gym excecutes action in game environment on behalf of actor-learner
                 new_state, reward, done = env.step(action_index)
@@ -198,7 +203,7 @@ class DQN:
                 if done:
                     targets.append(clipped_reward)
                 else:
-                    targets.append(clipped_reward + gamma * np.max(target_q_values))
+                    targets.append(clipped_reward + FLAGS.gamma * np.max(target_q_values))
     
                 actions.append(action_list)
                 states.append(state)
@@ -215,11 +220,11 @@ class DQN:
 
                 
                 # update_target_network
-                if self.T % target_network_update_frequency == 0:
+                if self.T % FLAGS.target_network_update_frequency == 0:
                     self.session.run(self.update_target)
     
                 # train online network
-                if t % network_update_frequency == 0 or done:
+                if t % FLAGS.network_update_frequency == 0 or done:
                     if states:
                         self.session.run(self.grad_update, feed_dict = {self.state : states,
                                                           self.actions : actions,
@@ -230,12 +235,12 @@ class DQN:
                     targets = []
     
                 # Save model progress
-                if t % checkpoint_interval == 0:
-                    self.saver.save(self.session, checkpoint_dir+"/" +  game + ".ckpt" , global_step = t)
+                if t % FLAGS.checkpoint_interval == 0:
+                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" +  FLAGS.game + ".ckpt" , global_step = t)
                     #~ saver.save(session, FLAGS.checkpoint_dir+"/"+FLAGS.experiment+".ckpt", global_step = t)
                 # Print end of episode stats
                 if done:
-                    print "THREAD:", thread_id, "/ TIME", self.T, "/ TIMESTEP", t, "/ EPSILON", epsilon, "/ REWARD", episode_reward, "/ Q_MAX %.4f" % (mean_q/float(frames)), "/ EPSILON PROGRESS", t/float(anneal_epsilon_timesteps)
+                    print "THREAD:", thread_id, "/ TIME", self.T, "/ TIMESTEP", t, "/ EPSILON", epsilon, "/ REWARD", episode_reward, "/ Q_MAX %.4f" % (mean_q/float(frames)), "/ EPSILON PROGRESS", t/float(FLAGS.anneal_epsilon_timesteps)
                     break
 
 
@@ -248,22 +253,22 @@ class DQN:
         self.session.run(self.update_target)
 
         # Set up game environments (one per thread)
-        envs = [gym.make(game) for i in range(num_concurrent)]
+        envs = [gym.make(FLAGS.game) for i in range(FLAGS.num_concurrent)]
 
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
+        if not os.path.exists(FLAGS.checkpoint_dir):
+            os.makedirs(FLAGS.checkpoint_dir)
         # Initialize variables
         self.session.run(tf.initialize_all_variables())
 
 
         # Start num_concurrent actor-learner training threads
-        actor_learner_threads = [threading.Thread(target=self.actor_learner_thread, args=( envs[thread_id], thread_id, num_actions)) for thread_id in range(num_concurrent)]
+        actor_learner_threads = [threading.Thread(target=self.actor_learner_thread, args=( envs[thread_id], thread_id, num_actions)) for thread_id in range(FLAGS.num_concurrent)]
         for t in actor_learner_threads:
             t.start()
 
         # Show the agents training and write summary statistics
         while True:
-            if show_training:
+            if FLAGS.show_training:
                 for env in envs:
                 #~ print "paparas"
                     env.render()
@@ -272,15 +277,15 @@ class DQN:
             t.join() 
     
     def test(self, num_actions):
-        self.saver.restore(self.session, checkpoint_path)
-        print "Restored model weights from ", checkpoint_path
-        monitor_env = gym.make(game)
-        monitor_env.monitor.start("/tmp/" + game ,force=True)
-        env = DoomEnv(monitor_env, width, height, history_length)
+        self.saver.restore(self.session, FLAGS.checkpoint_path)
+        print "Restored model weights from ", FLAGS.checkpoint_path
+        monitor_env = gym.make(FLAGS.game)
+        monitor_env.monitor.start("/tmp/" + FLAGS.game ,force=True)
+        env = DoomEnv(monitor_env, FLAGS.width, FLAGS.height, FLAGS.history_length)
    
 
 
-        for i_episode in xrange(num_eval_episodes):
+        for i_episode in xrange(FLAGS.num_eval_episodes):
             state = env.get_initial_state()
             episode_reward = 0
             done = False
