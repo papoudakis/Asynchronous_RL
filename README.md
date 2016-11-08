@@ -1,4 +1,4 @@
-## Asynchronous_RL
+# Asynchronous_RL
 
 This is an implementation of asynchronous reinforcement alogithms as described in https://arxiv.org/pdf/1602.01783.pdf. 
 This implementation is for gym's doom environment.
@@ -18,7 +18,7 @@ There are 3 algorithms
 
 
 ## Execution
-#Training
+###Training
 In order to execute one of the above algorithms, and train an agent in one of
 the available environment, just run:
 ```
@@ -26,13 +26,15 @@ python dqn.py --game "ppaquette/DoomDefendCenter-v0"
 ```
 This way the algorithm will use the default parameteres, running the environment in
 8 different processes.
-#Testing
+###Testing
 In order to test an already trained agent just run
 ```
 python dqn.py --game "ppaquette/DoomDefendCenter-v0" --testing True --checkpoint_path "path/to/parameters/"
 ```
 ## Resources
-https://arxiv.org/pdf/1602.01783.pdf
 The code of this repo is completely based on the code of this repo:
 https://github.com/coreylynch/async-rl
+
+https://arxiv.org/pdf/1602.01783.pdf
+
 https://webdocs.cs.ualberta.ca/~sutton/book/the-book-2nd.html
