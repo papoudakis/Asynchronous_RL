@@ -133,7 +133,7 @@ class DQN:
         self.grad_update = optimizer.minimize(cost, var_list=self.model_params)
 
     def sample_final_epsilon(self):
-        possible_epsilon = [0.1]*4 + [0.5]*3 + [0.01]*3
+        possible_epsilon = [0.1]*4000 + [0.5]*3000 + [0.01]*3000
         return random.choice(possible_epsilon)
 
 
@@ -230,7 +230,7 @@ class DQN:
     
                 # Save model progress
                 if counter % FLAGS.checkpoint_interval == 0:
-                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" +  FLAGS.game + ".ckpt" , global_step = counter)
+                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" +  FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
                     
           
             if done:
@@ -246,9 +246,9 @@ class DQN:
 
 
             #update q value network
-            self.session.run(self.grad_update, feed_dict = {self.state : states,
-                                                          self.actions : actions,
-                                                          self.targets :targets})
+            self.session.run(self.grad_update, feed_dict = {self.state: states,
+                                                          self.actions: actions,
+                                                          self.targets: targets})
                 
             
                 
@@ -320,7 +320,7 @@ class DQN:
 def main():
 
     #~ num_actions = get_num_actions()
-    DQN(3)
+    DQN(7)
 
 if __name__ == "__main__":
     main()
