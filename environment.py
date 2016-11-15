@@ -23,6 +23,14 @@ class DoomEnv(object):
         if (gym_env.spec.id == "ppaquette/DoomDefendLine-v0"):
             print "Doing workaround for DoomDefendLine-v0"
             self.gym_actions = [0, 14, 15]
+        if (gym_env.spec.id == "ppaquette/DoomDeathmatch-v0"):
+            print "Doing workaround for DoomDeathmatch-v0"
+            self.gym_actions = [0, 10, 11, 12, 13, 14, 15]
+            
+        if (gym_env.spec.id == "ppaquette/DoomHealthGathering-v0"):
+            print "Doing workaround for DoomHealthGathering-v0"
+            self.gym_actions = [13, 14, 15]
+
         # Screen buffer of size AGENT_HISTORY_LENGTH to be able
         # to build state arrays of size [1, AGENT_HISTORY_LENGTH, width, height]
         self.state_buffer = deque()
