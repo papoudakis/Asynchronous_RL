@@ -133,7 +133,7 @@ class A3C_LSTM:
         log_probs = tf.log(tf.clip_by_value(self.policy_values, 1e-20, 1.0))
 
         # compute entropy
-        entropy = tf.reduce_sum(self.policy_values * log_probs, reduction_indices=1)
+        entropy = -tf.reduce_sum(self.policy_values * log_probs, reduction_indices=1)
 
         # policy network loss 
         p_loss = -(tf.reduce_sum(tf.mul(log_probs, self.actions), reduction_indices=1) * tf.stop_gradient(advantage) + FLAGS.BETA * entropy)
@@ -191,7 +191,6 @@ class A3C_LSTM:
                 # forward pass of network. Get Q(s,a)
                 probs = self.session.run(self.policy_values, feed_dict={self.state: [temp_state]})[0]
 
-                # define list of actions. All values are zeros except , the
                 # value of action that is executed
                 action_list = np.zeros([num_actions])
 
@@ -232,7 +231,7 @@ class A3C_LSTM:
 
                 # Save model progress
                 if counter % FLAGS.checkpoint_interval == 0:
-                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
+                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + "Beakout-v0" + ".ckpt" , global_step = counter)
 
             if done:
                 R_t = 0
@@ -299,19 +298,25 @@ class A3C_LSTM:
         monitor_env = gym.make(FLAGS.game)
         monitor_env.monitor.start("/tmp/" + FLAGS.game ,force=True)
         env = DoomEnv(monitor_env, FLAGS.width, FLAGS.height, FLAGS.history_length)
-   
-
 
         for i_episode in xrange(FLAGS.num_eval_episodes):
             state = env.get_initial_state()
             episode_reward = 0
             done = False
+            
+            # create state sequence
+            temp_state = np.zeros((t_max, FLAGS.history_length, FLAGS.width, FLAGS.height))
+            temp_state[t_max -1, :, :, :] = state
             while not done:
                 monitor_env.render()
-                q_values = self.q_values.eval(session = self.session, feed_dict = {self.state : [state]})
+                q_values = self.q_values.eval(session = self.session, feed_dict = {self.state : [temp_state]})
                 action_index = np.argmax(q_values)
                 new_state, reward, done = env.step(action_index)
                 state = new_state
+
+                # update state sequence
+                temp_state = np.delete(temp_state, 0, 0)
+                temp_state = np.insert(temp_state, t_max-1, state, 0)
                 episode_reward += reward
             print "Finished episode " + str(i_episode + 1) + " with score " + str(episode_reward)
         
