@@ -1,12 +1,13 @@
 # Asynchronous_RL
 
-This is an implementation of asynchronous reinforcement alogithms as described in https://arxiv.org/pdf/1602.01783.pdf. 
+This is an implementation of asynchronous reinforcement learning algorithms as described in https://arxiv.org/pdf/1602.01783.pdf. 
 This implementation is for gym's doom environment.
 
-There are 3 algorithms
+There are 4 algorithms
 * asynchronous one-step Q-learning
 * asynchronous n-steps Q-learning
-* ansynchronous advanced actor critic
+* asynchronous advanced actor critic
+* asynchronous LSTM advanced actor critic
 
 ## Requirements
 * [tensorflow](https://www.tensorflow.org/versions/r0.9/get_started/os_setup.html)
@@ -31,6 +32,20 @@ In order to test an already trained agent just run
 ```
 python dqn.py --game "ppaquette/DoomDefendCenter-v0" --testing True --checkpoint_path "path/to/parameters/"
 ```
+
+## Results
+Below there are some evaluation from gym openai
+
+* Using one step dqn:
+
+https://gym.openai.com/evaluations/eval_MGqu9wbTxS0fVFlz2puow
+
+https://gym.openai.com/envs/DoomDefendCenter-v0
+
+* Using n steps dqn:
+
+https://gym.openai.com/evaluations/eval_f8hCpqhQnqJEJCn3uiOWg
+
 ## Resources
 The code of this repo is completely based on the code of this repo:
 https://github.com/coreylynch/async-rl
