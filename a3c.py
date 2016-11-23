@@ -125,28 +125,24 @@ class A3C:
 
         #compute advantage
         advantage = self.targets - self.value
-        print self.targets.get_shape()
-        print self.value.get_shape()
-        print advantage.get_shape()
+
         # now we will compute the cost for policy networkc which is:
-        # log(policy(a|s, theta) )*(R - value(s, theta')) + b*entropy
+        # -[log(policy(a|s, theta) )*(R - value(s, theta')) + b*entropy]
 
         # compute log probs
         log_probs = tf.log(tf.clip_by_value(self.policy_values, 1e-20, 1.0))
-        print log_probs.get_shape()
-        print self.policy_values.get_shape()
+
         # compute entropy
-        entropy = tf.reduce_sum(self.policy_values * log_probs, reduction_indices=1)
-        print entropy.get_shape()
+        entropy = -tf.reduce_sum(self.policy_values * log_probs, reduction_indices=1)
+
         # policy network loss 
         p_loss = -(tf.reduce_sum(tf.mul(log_probs, self.actions), reduction_indices=1) * tf.stop_gradient(advantage) + FLAGS.BETA * entropy)
-        print p_loss.get_shape()
+
         # value network loss
         v_loss = tf.square(advantage)
-        print v_loss.get_shape()
+
         # total loss
         cost = tf.reduce_mean(p_loss + 0.5 * v_loss)
-        print cost.get_shape()
 
         # define variable learning rate
         self.learning_rate = tf.placeholder(tf.float32, shape=[])
@@ -157,46 +153,25 @@ class A3C:
         # define traininf function
         self.grad_update = optimizer.minimize(cost)
 
-
-    def sample_final_epsilon(self):
-        possible_epsilon = [0.1]*4000 + [0.5]*3000 + [0.01]*3000
-        return random.choice(possible_epsilon)
-
-
-
-    
     def actor_learner_thread(self, env, thread_id, num_actions):
-
 
         # create instance of Doom environment
         env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
-
-
-        
-        initial_epsilon = 1
-        epsilon = 1
-        final_epsilon = self.sample_final_epsilon()    
-        print 'Starting thread ' + str(thread_id) + ' with final epsilon ' + str(final_epsilon)
-
+   
+        print 'Starting thread ' + str(thread_id) 
         time.sleep(3*thread_id)
-
+        
+        # Get initial game observation
         state = env.get_initial_state()
 
         # episode's counter
         episode_reward = 0
-        mean_q = 0
-        frames = 0
         counter = 0
 
         while self.T < self.TMAX:
-        
-            # Get initial game observation
-            
+                    
             done = False
-
             
-            
-
             # clear gradients
             states = []
             actions = []
@@ -214,12 +189,7 @@ class A3C:
                 # value of action that is executed
                 action_list = np.zeros([num_actions])
 
-                action_index = 0
-
-                # chose action based on current policy
-                #~ if random.random() <= epsilon:
-                    #~ action_index = random.randrange(num_actions)
-                #~ else:
+                # choose action based on policy
                 action_index = sample_policy_action(num_actions, probs)
                 action_list[action_index] = 1
 
@@ -227,10 +197,6 @@ class A3C:
                 actions.append(action_list)
                 states.append(state)
                 
-                # reduce epsilon
-                if epsilon > final_epsilon:
-                    epsilon -= (initial_epsilon - final_epsilon) / FLAGS.anneal_epsilon_timesteps
-
                 # Gym excecutes action in game environment on behalf of actor-learner
                 new_state, reward, done = env.step(action_index)
 
@@ -248,15 +214,13 @@ class A3C:
                 t += 1
                 counter += 1
                 # update episode's counter
-                frames += 1
                 episode_reward += reward
     
     
                 # Save model progress
                 if counter % FLAGS.checkpoint_interval == 0:
                     self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
-                    
-          
+
             if done:
                 R_t = 0
             else:
@@ -268,24 +232,18 @@ class A3C:
                 R_t = prev_reward[i] + FLAGS.gamma * R_t
                 targets[i] = R_t
 
-
             #update q value network
             self.session.run(self.grad_update, feed_dict = {self.state: states,
                                                           self.actions: actions,
                                                           self.targets: targets,
                                                           self.learning_rate: self.lr})
                 
-            
-                
             if done:
-                print "THREAD:", thread_id, "/ TIME", self.T, "/ TIMESTEP", counter, "/ EPSILON", epsilon, "/ REWARD", episode_reward, "/ EPSILON PROGRESS", counter/float(FLAGS.anneal_epsilon_timesteps)
+                print "THREAD:", thread_id, "/ TIME", self.T, "/ TIMESTEP", counter, "/ REWARD", episode_reward, "/ EPSILON PROGRESS", counter/float(FLAGS.anneal_epsilon_timesteps)
                 episode_reward = 0
-                frames = 0
+                
+                # Get initial game observation
                 state = env.get_initial_state()
-
-
-
-
 
     def train(self, num_actions):
 
@@ -309,7 +267,6 @@ class A3C:
         while True:
             if FLAGS.show_training:
                 for env in envs:
-                #~ print "paparas"
                     env.render()
         
         for t in actor_learner_threads:
@@ -321,8 +278,6 @@ class A3C:
         monitor_env = gym.make(FLAGS.game)
         monitor_env.monitor.start("/tmp/" + FLAGS.game ,force=True)
         env = DoomEnv(monitor_env, FLAGS.width, FLAGS.height, FLAGS.history_length)
-   
-
 
         for i_episode in xrange(FLAGS.num_eval_episodes):
             state = env.get_initial_state()
@@ -330,8 +285,8 @@ class A3C:
             done = False
             while not done:
                 monitor_env.render()
-                q_values = self.q_values.eval(session = self.session, feed_dict = {self.state : [state]})
-                action_index = np.argmax(q_values)
+                probs = self.session.run(self.policy_values, feed_dict={self.state: [state]})[0]
+                action_index = sample_policy_action(num_actions, probs)
                 new_state, reward, done = env.step(action_index)
                 state = new_state
                 episode_reward += reward
@@ -339,11 +294,16 @@ class A3C:
         
         monitor_env.monitor.close()
 
-
+def get_num_actions():
+    env = gym.make(FLAGS.game)
+    env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+    num_actions = len(env.gym_actions)
+    return num_actions
+    
 def main():
 
-    #~ num_actions = get_num_actions()
-    A3C(3)
+    num_actions = get_num_actions()
+    A3C(num_actions)
 
 if __name__ == "__main__":
     main()
