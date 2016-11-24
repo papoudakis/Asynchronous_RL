@@ -170,11 +170,10 @@ class A3C_LSTM:
         counter = 0
 
         # create sequence of states
-        temp_state = np.zeros((t_max, FLAGS.history_length, FLAGS.width, FLAGS.height))
-        temp_state[t_max -1, :, :, :] = state
+        state_sequence = np.zeros((t_max, FLAGS.history_length, FLAGS.width, FLAGS.height))
+        state_sequence[t_max -1, :, :, :] = state
 
         # define args of grad_update function
-        targets = []
         states = []
         actions = []
         while self.T < self.TMAX:
@@ -188,8 +187,8 @@ class A3C_LSTM:
             
             while not (done or ((t - t_start)  == t_max)):
                 
-                # forward pass of network. Get Q(s,a)
-                probs = self.session.run(self.policy_values, feed_dict={self.state: [temp_state]})[0]
+                # forward pass of network. Get probability of every action
+                probs = self.session.run(self.policy_values, feed_dict={self.state: [state_sequence]})[0]
 
                 # value of action that is executed
                 action_list = np.zeros([num_actions])
@@ -200,7 +199,7 @@ class A3C_LSTM:
 
                 # add states and actions to gradients
                 actions.append(action_list)
-                states.append(temp_state)
+                states.append(state_sequence)
 
                 # Gym excecutes action in game environment on behalf of actor-learner
                 new_state, reward, done = env.step(action_index)
@@ -217,8 +216,8 @@ class A3C_LSTM:
                 state = new_state
                 
                 # add state to sequence
-                temp_state = np.delete(temp_state, 0, 0)
-                temp_state = np.insert(temp_state, t_max-1, state, 0)
+                state_sequence = np.delete(state_sequence, 0, 0)
+                state_sequence = np.insert(state_sequence, t_max-1, state, 0)
 
                 # Update global counters
                 self.T += 1
@@ -231,16 +230,17 @@ class A3C_LSTM:
 
                 # Save model progress
                 if counter % FLAGS.checkpoint_interval == 0:
-                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + "Beakout-v0" + ".ckpt" , global_step = counter)
+                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
 
             if done:
                 R_t = 0
             else:
-                R_t = self.value.eval(session = self.session, feed_dict = {self.state : [temp_state]})[0][0]
+                R_t = self.value.eval(session = self.session, feed_dict = {self.state : [state_sequence]})[0][0]
 
+            targets = np.zeros((t - t_start))
             for i in range(t - t_start -1 , -1, -1):
                 R_t = prev_reward[i] + FLAGS.gamma * R_t
-                targets.append(R_t)
+                targets[i] = R_t
 
 
             #update q value network
@@ -249,7 +249,6 @@ class A3C_LSTM:
                                                           self.targets: targets,
                                                           self.learning_rate: self.lr})
             # clear gradients    
-            targets = []
             actions = []
             states = []
                 
@@ -260,8 +259,8 @@ class A3C_LSTM:
                 state = env.get_initial_state()
 
                 # clear state sequence
-                temp_state = np.zeros((t_max,4,84,84))
-                temp_state[t_max-1, :, :, :] = state
+                state_sequence = np.zeros((t_max,4,84,84))
+                state_sequence[t_max-1, :, :, :] = state
                 
 
     def train(self, num_actions):
@@ -305,18 +304,18 @@ class A3C_LSTM:
             done = False
             
             # create state sequence
-            temp_state = np.zeros((t_max, FLAGS.history_length, FLAGS.width, FLAGS.height))
-            temp_state[t_max -1, :, :, :] = state
+            state_sequence = np.zeros((t_max, FLAGS.history_length, FLAGS.width, FLAGS.height))
+            state_sequence[t_max -1, :, :, :] = state
             while not done:
                 monitor_env.render()
-                q_values = self.q_values.eval(session = self.session, feed_dict = {self.state : [temp_state]})
+                q_values = self.q_values.eval(session = self.session, feed_dict = {self.state : [state_sequence]})
                 action_index = np.argmax(q_values)
                 new_state, reward, done = env.step(action_index)
                 state = new_state
 
                 # update state sequence
-                temp_state = np.delete(temp_state, 0, 0)
-                temp_state = np.insert(temp_state, t_max-1, state, 0)
+                state_sequence = np.delete(state_sequence, 0, 0)
+                state_sequence = np.insert(state_sequence, t_max-1, state, 0)
                 episode_reward += reward
             print "Finished episode " + str(i_episode + 1) + " with score " + str(episode_reward)
         

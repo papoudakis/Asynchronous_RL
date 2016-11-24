@@ -36,7 +36,7 @@ flags.DEFINE_integer('network_update_frequency', 32, 'Frequency with which each 
 flags.DEFINE_integer('target_network_update_frequency', 40000, 'Reset the target network every n timesteps')
 flags.DEFINE_float('learning_rate', 0.0001, 'Initial learning rate.')
 flags.DEFINE_float('gamma', 0.99, 'Reward discount rate.')
-flags.DEFINE_float('BETA', 0.0, 'factor of regularazation.')
+flags.DEFINE_float('BETA', 0.01, 'factor of regularazation.')
 flags.DEFINE_integer('anneal_epsilon_timesteps', 1000000, 'Number of timesteps to anneal epsilon.')
 flags.DEFINE_string('checkpoint_dir', '/tmp/checkpoints/', 'Directory for storing model checkpoints')
 flags.DEFINE_boolean('show_training', True, 'If true, have gym render evironments during training')
@@ -50,7 +50,7 @@ FLAGS = flags.FLAGS
 T = 0
 TMAX = FLAGS.tmax
 
-t_max = 32
+t_max = 5
 
 def create_model(num_actions, agent_history_length, resized_width, resized_height):
     with tf.device("/cpu:0"):
@@ -175,7 +175,6 @@ class A3C:
             # clear gradients
             states = []
             actions = []
-            targets = []
             prev_reward = []
 
             t = 0
