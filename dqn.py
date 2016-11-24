@@ -239,8 +239,8 @@ class DQN:
     
                 # Save model progress
                 if t % FLAGS.checkpoint_interval == 0:
-                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" +  FLAGS.game + ".ckpt" , global_step = t)
-                    #~ saver.save(session, FLAGS.checkpoint_dir+"/"+FLAGS.experiment+".ckpt", global_step = t)
+                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = t)
+
                 # Print end of episode stats
                 if done:
                     print "THREAD:", thread_id, "/ TIME", self.T, "/ TIMESTEP", t, "/ EPSILON", epsilon, "/ REWARD", episode_reward, "/ Q_MAX %.4f" % (mean_q/float(frames)), "/ EPSILON PROGRESS", t/float(FLAGS.anneal_epsilon_timesteps)
