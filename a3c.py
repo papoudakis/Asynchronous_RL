@@ -108,7 +108,7 @@ class A3C:
         # parameters of the target model
         self.policy_model_params = self.policy_model.trainable_weights
 
-        # operation for q values
+        # operation for state value
         self.value = self.value_model(self.state)
          
         # operation for policies
@@ -181,7 +181,7 @@ class A3C:
             t_start = t
             
             while not (done or ((t - t_start)  == t_max)):
-                # forward pass of network. Get Q(s,a)
+                # forward pass of network. Get probability of all actions
                 probs = self.session.run(self.policy_values, feed_dict={self.state: [state]})[0]
 
                 # define list of actions. All values are zeros except , the
