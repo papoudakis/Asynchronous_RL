@@ -124,8 +124,11 @@ class DQN:
         # define cost
         cost = tf.reduce_mean(tf.square(self.targets - action_q_values))
 
+        # define variable learning rate
+        self.learning_rate = tf.placeholder(tf.float32, shape=[])
+        
         # define optimazation method
-        optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate)
+        optimizer = tf.train.AdamOptimizer(self.learning_rate)
 
         # define traininf function
         self.grad_update = optimizer.minimize(cost, var_list=self.model_params)
@@ -133,16 +136,11 @@ class DQN:
     def sample_final_epsilon(self):
         possible_epsilon = [0.1]*4 + [0.5]*3 + [0.01]*3
         return random.choice(possible_epsilon)
-
-
-
     
     def actor_learner_thread(self, env, thread_id, num_actions):
 
-
         # create instance of Doom environment
         env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
-
 
         # Initialize network gradients
         states = []
@@ -189,6 +187,10 @@ class DQN:
                 if epsilon > final_epsilon:
                     epsilon -= (initial_epsilon - final_epsilon) / FLAGS.anneal_epsilon_timesteps
 
+                # decrease learning rate
+                if self.lr > 0:
+                    self.lr -= FLAGS.learning_rate / self.TMAX
+                    
                 # Gym excecutes action in game environment on behalf of actor-learner
                 new_state, reward, done = env.step(action_index)
 
@@ -228,7 +230,8 @@ class DQN:
                     if states:
                         self.session.run(self.grad_update, feed_dict = {self.state : states,
                                                           self.actions : actions,
-                                                          self.targets :targets})
+                                                          self.targets :targets,
+                                                          self.learning_rate: self.lr})
                     # Clear gradients
                     states = []
                     actions = []
@@ -252,6 +255,9 @@ class DQN:
         # Initialize target network weights
         self.session.run(self.update_target)
 
+        # inititalize learning rate
+        self.lr = FLAGS.learning_rate
+        
         # Set up game environments (one per thread)
         envs = [gym.make(FLAGS.game) for i in range(FLAGS.num_concurrent)]
 
@@ -270,7 +276,6 @@ class DQN:
         while True:
             if FLAGS.show_training:
                 for env in envs:
-                #~ print "paparas"
                     env.render()
         
         for t in actor_learner_threads:
@@ -300,11 +305,16 @@ class DQN:
         
         monitor_env.monitor.close()
 
+def get_num_actions():
+    env = gym.make(FLAGS.game)
+    env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+    num_actions = len(env.gym_actions)
+    return num_actions
 
 def main():
 
-    #~ num_actions = get_num_actions()
-    DQN(3)
+    num_actions = get_num_actions()
+    DQN(num_actions)
 
 if __name__ == "__main__":
     main()
