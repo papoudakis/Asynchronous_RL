@@ -62,7 +62,7 @@ def create_model(num_actions, agent_history_length, resized_width, resized_heigh
         m = Model(input=inputs, output=q_values)
     return state, m
 
-class DQN:
+class N_Steps_DQN:
     
     def __init__(self, num_actions):
         
@@ -75,10 +75,6 @@ class DQN:
             K.set_session(self.session)
             self.create_operations(num_actions)
             self.saver = tf.train.Saver()
-        
-
-
-        # episodes global counters
         
             if FLAGS.testing:
                 self.test(num_actions)
@@ -126,8 +122,11 @@ class DQN:
         # define cost
         cost = tf.reduce_mean(tf.square(self.targets - action_q_values))
 
+        # define variable learning rate
+        self.learning_rate = tf.placeholder(tf.float32, shape=[])
+        
         # define optimazation method
-        optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate)
+        optimizer = tf.train.AdamOptimizer(self.learning_rate)
 
         # define traininf function
         self.grad_update = optimizer.minimize(cost, var_list=self.model_params)
@@ -136,24 +135,18 @@ class DQN:
         possible_epsilon = [0.1]*4000 + [0.5]*3000 + [0.01]*3000
         return random.choice(possible_epsilon)
 
-
-
-    
     def actor_learner_thread(self, env, thread_id, num_actions):
-
 
         # create instance of Doom environment
         env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
-
-
         
         initial_epsilon = 1
         epsilon = 1
         final_epsilon = self.sample_final_epsilon()    
         print 'Starting thread ' + str(thread_id) + ' with final epsilon ' + str(final_epsilon)
-
         time.sleep(3*thread_id)
-
+        
+        # Get initial game observation
         state = env.get_initial_state()
 
         # episode's counter
@@ -162,13 +155,8 @@ class DQN:
         frames = 0
         counter = 0
         while self.T < self.TMAX:
-        
-            # Get initial game observation
             
             done = False
-
-            
-            
 
             # clear gradients
             states = []
@@ -186,9 +174,7 @@ class DQN:
                 # define list of actions. All values are zeros except , the
                 # value of action that is executed
                 action_list = np.zeros([num_actions])
-
-                action_index = 0
-
+                
                 # chose action based on current policy
                 if random.random() <= epsilon:
                     action_index = random.randrange(num_actions)
@@ -204,13 +190,16 @@ class DQN:
                 if epsilon > final_epsilon:
                     epsilon -= (initial_epsilon - final_epsilon) / FLAGS.anneal_epsilon_timesteps
 
+                # decrease learning rate
+                if self.lr > 0:
+                    self.lr -= FLAGS.learning_rate / self.TMAX
+
                 # Gym excecutes action in game environment on behalf of actor-learner
                 new_state, reward, done = env.step(action_index)
 
                 # clip reward to -1, 1
                 clipped_reward = np.clip(reward, -1, 1)
                 prev_reward.append(clipped_reward)
-
 
                 # Update the state and global counters
                 state = new_state
@@ -226,13 +215,10 @@ class DQN:
                 if self.T % FLAGS.target_network_update_frequency == 0:
                     self.session.run(self.update_target)
     
-                
-    
                 # Save model progress
                 if counter % FLAGS.checkpoint_interval == 0:
                     self.saver.save(self.session, FLAGS.checkpoint_dir+"/" +  FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
-                    
-          
+
             if done:
                 R_t = 0
             else:
@@ -244,24 +230,18 @@ class DQN:
                 R_t = prev_reward[i] + FLAGS.gamma * R_t
                 targets[i] = R_t
 
-
             #update q value network
             self.session.run(self.grad_update, feed_dict = {self.state: states,
                                                           self.actions: actions,
-                                                          self.targets: targets})
-                
-            
-                
+                                                          self.targets: targets,
+                                                          self.learning_rate: self.lr})
+
             if done:
                 print "THREAD:", thread_id, "/ TIME", self.T, "/ TIMESTEP", counter, "/ EPSILON", epsilon, "/ REWARD", episode_reward, "/ Q_MAX %.4f" % (mean_q/float(frames)), "/ EPSILON PROGRESS", counter/float(FLAGS.anneal_epsilon_timesteps)
                 episode_reward = 0
                 mean_q = 0
                 frames = 0
                 state = env.get_initial_state()
-
-
-
-
 
     def train(self, num_actions):
 
@@ -271,6 +251,9 @@ class DQN:
         # Set up game environments (one per thread)
         envs = [gym.make(FLAGS.game) for i in range(FLAGS.num_concurrent)]
 
+        # inititalize learning rate
+        self.lr = FLAGS.learning_rate
+        
         if not os.path.exists(FLAGS.checkpoint_dir):
             os.makedirs(FLAGS.checkpoint_dir)
         # Initialize variables
@@ -286,7 +269,6 @@ class DQN:
         while True:
             if FLAGS.show_training:
                 for env in envs:
-                #~ print "paparas"
                     env.render()
         
         for t in actor_learner_threads:
@@ -298,8 +280,6 @@ class DQN:
         monitor_env = gym.make(FLAGS.game)
         monitor_env.monitor.start("/tmp/" + FLAGS.game ,force=True)
         env = DoomEnv(monitor_env, FLAGS.width, FLAGS.height, FLAGS.history_length)
-   
-
 
         for i_episode in xrange(FLAGS.num_eval_episodes):
             state = env.get_initial_state()
@@ -316,11 +296,16 @@ class DQN:
         
         monitor_env.monitor.close()
 
-
+def get_num_actions():
+    env = gym.make(FLAGS.game)
+    env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+    num_actions = len(env.gym_actions)
+    return num_actions
+    
 def main():
 
-    #~ num_actions = get_num_actions()
-    DQN(7)
+    num_actions = get_num_actions()
+    N_Steps_DQN(num_actions)
 
 if __name__ == "__main__":
     main()
