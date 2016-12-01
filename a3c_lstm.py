@@ -6,11 +6,8 @@ from gym.spaces import Box, Discrete
 from skimage.color import rgb2gray
 from skimage.transform import resize
 from keras.models import Model
-from keras.layers import Input, Flatten, Dense, Lambda, Convolution2D, TimeDistributed, Masking, LSTM
-from keras.layers.normalization import BatchNormalization
-from keras.models import Sequential
+from keras.layers import Input, Flatten, Dense, Convolution2D, TimeDistributed, LSTM
 from keras import backend as K
-from keras.optimizers import RMSprop
 import numpy as np
 import random
 import copy
@@ -18,7 +15,6 @@ import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 from math import sqrt
 import threading
-import gym_pull
 from environment import DoomEnv
 import time
 import tensorflow as tf
@@ -32,8 +28,9 @@ flags.DEFINE_integer('height', 84, 'Scale screen to this height.')
 flags.DEFINE_integer('history_length', 4, 'Use this number of recent screens as the environment state.')
 flags.DEFINE_integer('network_update_frequency', 32, 'Frequency with which each actor learner thread does an async gradient update')
 flags.DEFINE_integer('target_network_update_frequency', 40000, 'Reset the target network every n timesteps')
-flags.DEFINE_float('learning_rate', 0.0001, 'Initial learning rate.')
+flags.DEFINE_float('learning_rate', 0.001, 'Initial learning rate.')
 flags.DEFINE_float('gamma', 0.99, 'Reward discount rate.')
+flags.DEFINE_float('decay', 0.99, 'RMSProp decay')
 flags.DEFINE_float('BETA', 0.01, 'factor of regularazation.')
 flags.DEFINE_integer('anneal_epsilon_timesteps', 1000000, 'Number of timesteps to anneal epsilon.')
 flags.DEFINE_string('checkpoint_dir', '/tmp/checkpoints/', 'Directory for storing model checkpoints')
@@ -114,6 +111,29 @@ class A3C_LSTM:
         # operation for policies
         self.policy_values = self.policy_model(self.state)
 
+        # create local networks and states and parameter updates
+        self.local_states = []
+        self.local_p_model = []
+        self.local_v_model = []
+        self.p_params = []
+        self.v_params = []
+        self.local_policy = []
+        self.local_value = []
+        self.update_policy = []
+        self.update_value = []
+        
+        for i in range(FLAGS.num_concurrent):
+            s, v, p = create_model(num_actions, FLAGS.history_length, FLAGS.width, FLAGS.height)
+            self.local_states.append(s)
+            self.local_v_model.append(v)
+            self.local_p_model.append(p)
+            self.p_params.append(p.trainable_weights)
+            self.v_params.append(v.trainable_weights)
+            self.local_policy.append(p(s))
+            self.local_value.append(v(s))
+            self.update_policy.append([self.p_params[i][j].assign(self.policy_model_params[j]) for j in range(len(self.p_params[i]))])
+            self.update_value.append([self.v_params[i][j].assign(self.value_model_params[j]) for j in range(len(self.v_params[i]))])
+
         print "creating operations"
         # operations for training model
 
@@ -148,7 +168,7 @@ class A3C_LSTM:
         self.learning_rate = tf.placeholder(tf.float32, shape=[])
 
         # define optimazation method
-        optimizer = tf.train.AdamOptimizer(self.learning_rate)
+        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=FLAGS.decay)
 
         # define traininf function
         self.grad_update = optimizer.minimize(cost)
@@ -172,7 +192,7 @@ class A3C_LSTM:
         # create sequence of states
         state_sequence = np.zeros((t_max, FLAGS.history_length, FLAGS.width, FLAGS.height))
         state_sequence[t_max -1, :, :, :] = state
-
+        
         # define args of grad_update function
         states = []
         actions = []
@@ -185,11 +205,16 @@ class A3C_LSTM:
             t = 0
             t_start = t
             
+            # synchronize policy and value network
+            self.session.run(self.update_policy[thread_id])
+            self.session.run(self.update_value[thread_id])
+            
             while not (done or ((t - t_start)  == t_max)):
                 
                 # forward pass of network. Get probability of every action
-                probs = self.session.run(self.policy_values, feed_dict={self.state: [state_sequence]})[0]
+                probs = self.session.run(self.local_policy[thread_id], feed_dict={self.local_states[thread_id]: [state_sequence]})[0]
 
+                # define list of actions. All values are zeros except , the
                 # value of action that is executed
                 action_list = np.zeros([num_actions])
 
@@ -218,7 +243,7 @@ class A3C_LSTM:
                 # add state to sequence
                 state_sequence = np.delete(state_sequence, 0, 0)
                 state_sequence = np.insert(state_sequence, t_max-1, state, 0)
-
+                
                 # Update global counters
                 self.T += 1
                 t += 1
@@ -235,7 +260,7 @@ class A3C_LSTM:
             if done:
                 R_t = 0
             else:
-                R_t = self.value.eval(session = self.session, feed_dict = {self.state : [state_sequence]})[0][0]
+                R_t = self.session.run(self.local_value[thread_id], feed_dict = {self.local_states[thread_id] : [state_sequence]})[0][0]
 
             targets = np.zeros((t - t_start))
             for i in range(t - t_start -1 , -1, -1):
@@ -253,14 +278,15 @@ class A3C_LSTM:
             states = []
                 
             if done:
-                print "THREAD:", thread_id, "/ TIME", self.T, "/ TIMESTEP", counter, "/ REWARD", episode_reward, "/ EPSILON PROGRESS", counter/float(FLAGS.anneal_epsilon_timesteps)
+                print "THREAD:", thread_id, "/ TIME", self.T, "/ TIMESTEP", counter, "/ REWARD", episode_reward
                 episode_reward = 0
                 frames = 0
                 state = env.get_initial_state()
 
                 # clear state sequence
-                state_sequence = np.zeros((t_max,4,84,84))
+                state_sequence = np.zeros((t_max, FLAGS.history_length, FLAGS.width, FLAGS.height))
                 state_sequence[t_max-1, :, :, :] = state
+
                 
 
     def train(self, num_actions):
@@ -306,6 +332,7 @@ class A3C_LSTM:
             # create state sequence
             state_sequence = np.zeros((t_max, FLAGS.history_length, FLAGS.width, FLAGS.height))
             state_sequence[t_max -1, :, :, :] = state
+            
             while not done:
                 monitor_env.render()
                 q_values = self.q_values.eval(session = self.session, feed_dict = {self.state : [state_sequence]})
