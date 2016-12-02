@@ -26,13 +26,11 @@ flags.DEFINE_integer('tmax', 80000000, 'Number of training timesteps.')
 flags.DEFINE_integer('width', 84, 'Scale screen to this width.')
 flags.DEFINE_integer('height', 84, 'Scale screen to this height.')
 flags.DEFINE_integer('history_length', 4, 'Use this number of recent screens as the environment state.')
-flags.DEFINE_integer('network_update_frequency', 32, 'Frequency with which each actor learner thread does an async gradient update')
-flags.DEFINE_integer('target_network_update_frequency', 40000, 'Reset the target network every n timesteps')
-flags.DEFINE_float('learning_rate', 0.001, 'Initial learning rate.')
+flags.DEFINE_float('learning_rate', 0.0007, 'Initial learning rate.')
 flags.DEFINE_float('gamma', 0.99, 'Reward discount rate.')
-flags.DEFINE_float('decay', 0.99, 'RMSProp decay')
+flags.DEFINE_float('decay', 0.99,'Decay of RMSProp Optimizer ')
+flags.DEFINE_float('epsilon', 0.1,'Epsilon of RMSProp Optimizer ')
 flags.DEFINE_float('BETA', 0.01, 'factor of regularazation.')
-flags.DEFINE_integer('anneal_epsilon_timesteps', 1000000, 'Number of timesteps to anneal epsilon.')
 flags.DEFINE_string('checkpoint_dir', '/tmp/checkpoints/', 'Directory for storing model checkpoints')
 flags.DEFINE_boolean('show_training', True, 'If true, have gym render evironments during training')
 flags.DEFINE_boolean('testing', False, 'If true, run gym evaluation')
@@ -168,7 +166,7 @@ class A3C_LSTM:
         self.learning_rate = tf.placeholder(tf.float32, shape=[])
 
         # define optimazation method
-        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=FLAGS.decay)
+        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=FLAGS.decay, epsilon=FLAGS.epsilon)
 
         # define traininf function
         self.grad_update = optimizer.minimize(cost)

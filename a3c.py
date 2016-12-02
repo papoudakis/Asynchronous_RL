@@ -26,7 +26,7 @@ flags.DEFINE_integer('tmax', 80000000, 'Number of training timesteps.')
 flags.DEFINE_integer('width', 84, 'Scale screen to this width.')
 flags.DEFINE_integer('height', 84, 'Scale screen to this height.')
 flags.DEFINE_integer('history_length', 4, 'Use this number of recent screens as the environment state.')
-flags.DEFINE_float('learning_rate', 0.001, 'Initial learning rate.')
+flags.DEFINE_float('learning_rate', 0.0007, 'Initial learning rate.')
 flags.DEFINE_float('gamma', 0.99, 'Reward discount rate.')
 flags.DEFINE_float('BETA', 0.01, 'factor of regularazation.')
 flags.DEFINE_string('checkpoint_dir', '/tmp/checkpoints/', 'Directory for storing model checkpoints')
@@ -35,6 +35,8 @@ flags.DEFINE_boolean('testing', False, 'If true, run gym evaluation')
 flags.DEFINE_string('checkpoint_path', 'path/to/recent.ckpt', 'Path to recent checkpoint to use for evaluation')
 flags.DEFINE_integer('num_eval_episodes', 100, 'Number of episodes to run gym evaluation.')
 flags.DEFINE_integer('checkpoint_interval', 600,'Checkpoint the model (i.e. save the parameters) every n ')
+flags.DEFINE_float('decay', 0.99,'Decay of RMSProp Optimizer ')
+flags.DEFINE_float('epsilon', 0.1,'Epsilon of RMSProp Optimizer ')
 FLAGS = flags.FLAGS
 
 
@@ -162,7 +164,7 @@ class A3C:
         self.learning_rate = tf.placeholder(tf.float32, shape=[])
 
         # define optimazation method
-        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=0.99)
+        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=FLAGS.decay, epsilon=FLAGS.epsilon)
 
         # define traininf function
         self.grad_update = optimizer.minimize(cost)
