@@ -29,7 +29,6 @@ flags.DEFINE_integer('history_length', 4, 'Use this number of recent screens as 
 flags.DEFINE_float('learning_rate', 0.0007, 'Initial learning rate.')
 flags.DEFINE_float('gamma', 0.99, 'Reward discount rate.')
 flags.DEFINE_float('decay', 0.99,'Decay of RMSProp Optimizer ')
-flags.DEFINE_float('epsilon', 0.1,'Epsilon of RMSProp Optimizer ')
 flags.DEFINE_float('BETA', 0.01, 'factor of regularazation.')
 flags.DEFINE_string('checkpoint_dir', '/tmp/checkpoints/', 'Directory for storing model checkpoints')
 flags.DEFINE_boolean('show_training', True, 'If true, have gym render evironments during training')
@@ -166,7 +165,7 @@ class A3C_LSTM:
         self.learning_rate = tf.placeholder(tf.float32, shape=[])
 
         # define optimazation method
-        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=FLAGS.decay, epsilon=FLAGS.epsilon)
+        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=FLAGS.decay)
 
         # define traininf function
         self.grad_update = optimizer.minimize(cost)

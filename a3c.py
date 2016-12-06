@@ -164,7 +164,7 @@ class A3C:
         self.learning_rate = tf.placeholder(tf.float32, shape=[])
 
         # define optimazation method
-        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=FLAGS.decay, epsilon=FLAGS.epsilon)
+        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=FLAGS.decay)
 
         # define traininf function
         self.grad_update = optimizer.minimize(cost)
