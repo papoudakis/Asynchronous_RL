@@ -2,25 +2,14 @@ import sys
 import gym
 import os
 os.environ["KERAS_BACKEND"] = "tensorflow"
-from gym.spaces import Box, Discrete
-from skimage.color import rgb2gray
-from skimage.transform import resize
 from keras.models import Model
-from keras.layers import Input, Flatten, Dense, Lambda, Convolution2D
-from keras.layers.normalization import BatchNormalization
-from keras.models import Sequential
+from keras.layers import Input, Flatten, Dense,  Convolution2D
 from keras import backend as K
-from keras.optimizers import RMSprop
 import numpy as np
 import random
 import copy
-import matplotlib.image as mpimg
-import matplotlib.pyplot as plt
-from math import sqrt
-from keras.initializations import zero
 import threading
-import gym_pull
-from environment import DoomEnv
+from environment import Env
 import time
 import tensorflow as tf
 
@@ -33,7 +22,8 @@ flags.DEFINE_integer('height', 84, 'Scale screen to this height.')
 flags.DEFINE_integer('history_length', 4, 'Use this number of recent screens as the environment state.')
 flags.DEFINE_integer('network_update_frequency', 32, 'Frequency with which each actor learner thread does an async gradient update')
 flags.DEFINE_integer('target_network_update_frequency', 10000, 'Reset the target network every n timesteps')
-flags.DEFINE_float('learning_rate', 0.0001, 'Initial learning rate.')
+flags.DEFINE_float('learning_rate', 0.0007, 'Initial learning rate.')
+flags.DEFINE_float('decay', 0.99, 'decay of rmsprop.')
 flags.DEFINE_float('gamma', 0.99, 'Reward discount rate.')
 flags.DEFINE_integer('anneal_epsilon_timesteps', 1000000, 'Number of timesteps to anneal epsilon.')
 flags.DEFINE_string('checkpoint_dir', '/tmp/checkpoints/', 'Directory for storing model checkpoints')
@@ -42,6 +32,7 @@ flags.DEFINE_boolean('testing', False, 'If true, run gym evaluation')
 flags.DEFINE_string('checkpoint_path', 'path/to/recent.ckpt', 'Path to recent checkpoint to use for evaluation')
 flags.DEFINE_integer('num_eval_episodes', 100, 'Number of episodes to run gym evaluation.')
 flags.DEFINE_integer('checkpoint_interval', 600,'Checkpoint the model (i.e. save the parameters) every n ')
+flags.DEFINE_string('game_type', 'Doom','Doom or atari game')
 FLAGS = flags.FLAGS
 
 
@@ -126,7 +117,7 @@ class N_Steps_DQN:
         self.learning_rate = tf.placeholder(tf.float32, shape=[])
         
         # define optimazation method
-        optimizer = tf.train.AdamOptimizer(self.learning_rate)
+        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay= FLAGS.decay)
 
         # define traininf function
         self.grad_update = optimizer.minimize(cost, var_list=self.model_params)
@@ -138,7 +129,7 @@ class N_Steps_DQN:
     def actor_learner_thread(self, env, thread_id, num_actions):
 
         # create instance of Doom environment
-        env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+        env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
         
         initial_epsilon = 1
         epsilon = 1
@@ -217,7 +208,10 @@ class N_Steps_DQN:
     
                 # Save model progress
                 if counter % FLAGS.checkpoint_interval == 0:
-                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" +  FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
+                    if FLAGS.game_type == 'Doom':
+                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
+                    else:
+                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game + ".ckpt" , global_step = counter)
 
             if done:
                 R_t = 0
@@ -279,8 +273,8 @@ class N_Steps_DQN:
         print "Restored model weights from ", FLAGS.checkpoint_path
         monitor_env = gym.make(FLAGS.game)
         monitor_env.monitor.start("/tmp/" + FLAGS.game ,force=True)
-        env = DoomEnv(monitor_env, FLAGS.width, FLAGS.height, FLAGS.history_length)
-
+        env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
+        
         for i_episode in xrange(FLAGS.num_eval_episodes):
             state = env.get_initial_state()
             episode_reward = 0
@@ -298,7 +292,7 @@ class N_Steps_DQN:
 
 def get_num_actions():
     env = gym.make(FLAGS.game)
-    env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+    env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
     num_actions = len(env.gym_actions)
     return num_actions
     

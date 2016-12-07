@@ -2,21 +2,14 @@ import sys
 import gym
 import os
 os.environ["KERAS_BACKEND"] = "tensorflow"
-from gym.spaces import Box, Discrete
-from skimage.color import rgb2gray
-from skimage.transform import resize
 from keras.models import Model
 from keras.layers import Input, Flatten, Dense, Convolution2D, TimeDistributed, LSTM
 from keras import backend as K
 import numpy as np
 import random
-import copy
-import matplotlib.image as mpimg
-import matplotlib.pyplot as plt
-from math import sqrt
 import threading
-from environment import DoomEnv
 import time
+from environment import Env
 import tensorflow as tf
 
 flags = tf.app.flags
@@ -36,6 +29,7 @@ flags.DEFINE_boolean('testing', False, 'If true, run gym evaluation')
 flags.DEFINE_string('checkpoint_path', 'path/to/recent.ckpt', 'Path to recent checkpoint to use for evaluation')
 flags.DEFINE_integer('num_eval_episodes', 100, 'Number of episodes to run gym evaluation.')
 flags.DEFINE_integer('checkpoint_interval', 600,'Checkpoint the model (i.e. save the parameters) every n ')
+flags.DEFINE_string('game_type', 'Doom','Doom or atari game')
 FLAGS = flags.FLAGS
 
 
@@ -57,7 +51,6 @@ def create_model(num_actions, agent_history_length, resized_width, resized_heigh
         p_values = Dense(output_dim=num_actions, activation='softmax')(model)
         value_model = Model(input=inputs, output=q_values)
         policy_model = Model(input=inputs, output=p_values)
-        policy_model.summary()
     return state, value_model, policy_model
 
 def sample_policy_action(num_actions, probs):
@@ -173,7 +166,7 @@ class A3C_LSTM:
     def actor_learner_thread(self, env, thread_id, num_actions):
 
         # create instance of Doom environment
-        env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+        env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
           
         print 'Starting thread ' + str(thread_id)
         time.sleep(3*thread_id)
@@ -249,10 +242,13 @@ class A3C_LSTM:
                 # update episode's counter
                 frames += 1
                 episode_reward += reward
-
+                
                 # Save model progress
                 if counter % FLAGS.checkpoint_interval == 0:
-                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
+                    if FLAGS.game_type == 'Doom':
+                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
+                    else:
+                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game + ".ckpt" , global_step = counter)
 
             if done:
                 R_t = 0
@@ -319,8 +315,8 @@ class A3C_LSTM:
         print "Restored model weights from ", FLAGS.checkpoint_path
         monitor_env = gym.make(FLAGS.game)
         monitor_env.monitor.start("/tmp/" + FLAGS.game ,force=True)
-        env = DoomEnv(monitor_env, FLAGS.width, FLAGS.height, FLAGS.history_length)
-
+        env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
+        
         for i_episode in xrange(FLAGS.num_eval_episodes):
             state = env.get_initial_state()
             episode_reward = 0
@@ -347,7 +343,7 @@ class A3C_LSTM:
 
 def get_num_actions():
     env = gym.make(FLAGS.game)
-    env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+    env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
     num_actions = len(env.gym_actions)
     return num_actions
 

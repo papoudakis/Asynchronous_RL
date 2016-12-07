@@ -2,25 +2,14 @@ import sys
 import gym
 import os
 os.environ["KERAS_BACKEND"] = "tensorflow"
-from gym.spaces import Box, Discrete
-from skimage.color import rgb2gray
-from skimage.transform import resize
 from keras.models import Model
 from keras.layers import Input, Flatten, Dense, Lambda, Convolution2D
-from keras.layers.normalization import BatchNormalization
-from keras.models import Sequential
 from keras import backend as K
-from keras.optimizers import RMSprop
 import numpy as np
 import random
 import copy
-import matplotlib.image as mpimg
-import matplotlib.pyplot as plt
-from math import sqrt
-from keras.initializations import zero
 import threading
-import gym_pull
-from environment import DoomEnv
+from environment import Env
 import time
 import tensorflow as tf
 
@@ -42,6 +31,7 @@ flags.DEFINE_boolean('testing', False, 'If true, run gym evaluation')
 flags.DEFINE_string('checkpoint_path', 'path/to/recent.ckpt', 'Path to recent checkpoint to use for evaluation')
 flags.DEFINE_integer('num_eval_episodes', 100, 'Number of episodes to run gym evaluation.')
 flags.DEFINE_integer('checkpoint_interval', 600,'Checkpoint the model (i.e. save the parameters) every n ')
+flags.DEFINE_string('game_type', 'Doom','Doom or atari game')
 FLAGS = flags.FLAGS
 
 
@@ -140,7 +130,7 @@ class DQN:
     def actor_learner_thread(self, env, thread_id, num_actions):
 
         # create instance of Doom environment
-        env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+        env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
 
         # Initialize network gradients
         states = []
@@ -239,7 +229,10 @@ class DQN:
     
                 # Save model progress
                 if t % FLAGS.checkpoint_interval == 0:
-                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = t)
+                    if FLAGS.game_type == 'Doom':
+                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = t)
+                    else:
+                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game + ".ckpt" , global_step = t)
 
                 # Print end of episode stats
                 if done:
@@ -286,7 +279,7 @@ class DQN:
         print "Restored model weights from ", FLAGS.checkpoint_path
         monitor_env = gym.make(FLAGS.game)
         monitor_env.monitor.start("/tmp/" + FLAGS.game ,force=True)
-        env = DoomEnv(monitor_env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+        env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
    
 
 
@@ -307,7 +300,7 @@ class DQN:
 
 def get_num_actions():
     env = gym.make(FLAGS.game)
-    env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+    env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
     num_actions = len(env.gym_actions)
     return num_actions
 

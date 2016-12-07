@@ -14,7 +14,7 @@ import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 from math import sqrt
 import threading
-from environment import DoomEnv
+from environment import Env
 import time
 import tensorflow as tf
 os.environ["KERAS_BACKEND"] = "tensorflow"
@@ -36,7 +36,7 @@ flags.DEFINE_string('checkpoint_path', 'path/to/recent.ckpt', 'Path to recent ch
 flags.DEFINE_integer('num_eval_episodes', 100, 'Number of episodes to run gym evaluation.')
 flags.DEFINE_integer('checkpoint_interval', 600,'Checkpoint the model (i.e. save the parameters) every n ')
 flags.DEFINE_float('decay', 0.99,'Decay of RMSProp Optimizer ')
-flags.DEFINE_float('epsilon', 0.1,'Epsilon of RMSProp Optimizer ')
+flags.DEFINE_string('game_type', 'Doom','Doom or atari game')
 FLAGS = flags.FLAGS
 
 
@@ -172,7 +172,7 @@ class A3C:
     def actor_learner_thread(self, env, thread_id, num_actions):
 
         # create instance of Doom environment
-        env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+        env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
    
         print 'Starting thread ' + str(thread_id) 
         time.sleep(3*thread_id)
@@ -239,7 +239,10 @@ class A3C:
     
                 # Save model progress
                 if counter % FLAGS.checkpoint_interval == 0:
-                    self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
+                    if FLAGS.game_type == 'Doom':
+                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
+                    else:
+                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game + ".ckpt" , global_step = counter)
 
             if done:
                 R_t = 0
@@ -266,7 +269,7 @@ class A3C:
                 state = env.get_initial_state()
 
     def train(self, num_actions):
-
+        
         # Set up game environments (one per thread)
         envs = [gym.make(FLAGS.game) for i in range(FLAGS.num_concurrent)]
 
@@ -298,7 +301,7 @@ class A3C:
         print "Restored model weights from ", FLAGS.checkpoint_path
         monitor_env = gym.make(FLAGS.game)
         monitor_env.monitor.start("/tmp/" + FLAGS.game ,force=True)
-        env = DoomEnv(monitor_env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+        env = Env(monitor_env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
 
         for i_episode in xrange(FLAGS.num_eval_episodes):
             state = env.get_initial_state()
@@ -317,7 +320,7 @@ class A3C:
 
 def get_num_actions():
     env = gym.make(FLAGS.game)
-    env = DoomEnv(env, FLAGS.width, FLAGS.height, FLAGS.history_length)
+    env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
     num_actions = len(env.gym_actions)
     return num_actions
     
