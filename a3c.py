@@ -10,8 +10,6 @@ from keras import backend as K
 import numpy as np
 import random
 import copy
-import matplotlib.image as mpimg
-import matplotlib.pyplot as plt
 from math import sqrt
 import threading
 from environment import Env
@@ -152,14 +150,14 @@ class A3C:
         entropy = -tf.reduce_sum(self.policy_values * log_probs, reduction_indices=1)
 
         # policy network loss 
-        p_loss = -(tf.reduce_sum(tf.mul(log_probs, self.actions), reduction_indices=1) * tf.stop_gradient(advantage) + FLAGS.BETA * entropy)
-
+        p_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions, [1]) * tf.stop_gradient(advantage)) - FLAGS.BETA * entropy
+        print p_loss.get_shape()
         # value network loss
-        v_loss = tf.square(advantage)
-
+        v_loss = tf.reduce_sum(tf.square(advantage))
+        print v_loss.get_shape()
         # total loss
-        cost = tf.reduce_mean(p_loss + 0.5 * v_loss)
-
+        cost = p_loss + 0.5 * v_loss
+        print cost.get_shape()
         # define variable learning rate
         self.learning_rate = tf.placeholder(tf.float32, shape=[])
 
@@ -272,13 +270,12 @@ class A3C:
         
         # Set up game environments (one per thread)
         envs = [gym.make(FLAGS.game) for i in range(FLAGS.num_concurrent)]
-
+        
         if not os.path.exists(FLAGS.checkpoint_dir):
             os.makedirs(FLAGS.checkpoint_dir)
             
         # Initialize variables
         self.session.run(tf.initialize_all_variables())
-
         # inititalize learning rate
         self.lr = FLAGS.learning_rate
         

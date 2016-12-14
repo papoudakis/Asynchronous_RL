@@ -273,7 +273,7 @@ class N_Steps_DQN:
         print "Restored model weights from ", FLAGS.checkpoint_path
         monitor_env = gym.make(FLAGS.game)
         monitor_env.monitor.start("/tmp/" + FLAGS.game ,force=True)
-        env = Env(env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
+        env = Env(monitor_env, FLAGS.width, FLAGS.height, FLAGS.history_length, FLAGS.game_type)
         
         for i_episode in xrange(FLAGS.num_eval_episodes):
             state = env.get_initial_state()
