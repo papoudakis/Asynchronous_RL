@@ -53,6 +53,11 @@ https://gym.openai.com/evaluations/eval_YB4PBRMQRWmWDW9eCXmV6g
 
 https://gym.openai.com/evaluations/eval_f8hCpqhQnqJEJCn3uiOWg
 
+* Using a3c:
+
+https://gym.openai.com/evaluations/eval_bxAN82ZRQe07kgfJTV5jA 
+This evaluation is only for 10M steps. It can become a lot better with 80M steps training
+
 ## Resources
 https://github.com/coreylynch/async-rl
 
