@@ -19,7 +19,7 @@ flags.DEFINE_integer('tmax', 80000000, 'Number of training timesteps.')
 flags.DEFINE_integer('width', 84, 'Scale screen to this width.')
 flags.DEFINE_integer('height', 84, 'Scale screen to this height.')
 flags.DEFINE_integer('history_length', 4, 'Use this number of recent screens as the environment state.')
-flags.DEFINE_float('learning_rate', 0.0007, 'Initial learning rate.')
+flags.DEFINE_float('learning_rate', 0.001, 'Initial learning rate.')
 flags.DEFINE_float('gamma', 0.99, 'Reward discount rate.')
 flags.DEFINE_float('decay', 0.99,'Decay of RMSProp Optimizer ')
 flags.DEFINE_float('BETA', 0.01, 'factor of regularazation.')
@@ -143,22 +143,19 @@ class A3C_LSTM:
         log_probs = tf.log(tf.clip_by_value(self.policy_values, 1e-20, 1.0))
 
         # compute entropy
-        entropy = -tf.reduce_sum(self.policy_values * log_probs, reduction_indices=1)
+        entropy = -tf.reduce_sum(self.policy_values * log_probs)
 
         # policy network loss 
-        p_loss = -(tf.reduce_sum(tf.mul(log_probs, self.actions), reduction_indices=1) * tf.stop_gradient(advantage) + FLAGS.BETA * entropy)
+        p_loss = -tf.reduce_sum(tf.reduce_sum(log_probs * self.actions, [1]) * tf.stop_gradient(advantage)) - FLAGS.BETA * entropy
 
         # value network loss
-        v_loss = tf.square(advantage)
+        v_loss = tf.reduce_sum(tf.square(advantage))
 
         # total loss
-        cost = tf.reduce_mean(p_loss + 0.5 * v_loss)
-
-        # define variable learning rate
-        self.learning_rate = tf.placeholder(tf.float32, shape=[])
+        cost = p_loss + 0.5 * v_loss
 
         # define optimazation method
-        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=FLAGS.decay)
+        optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate)
 
         # define traininf function
         self.grad_update = optimizer.minimize(cost)
@@ -264,8 +261,7 @@ class A3C_LSTM:
             #update q value network
             self.session.run(self.grad_update, feed_dict = {self.state: states,
                                                           self.actions: actions,
-                                                          self.targets: targets,
-                                                          self.learning_rate: self.lr})
+                                                          self.targets: targets})
             # clear gradients    
             actions = []
             states = []
@@ -301,7 +297,7 @@ class A3C_LSTM:
         for t in actor_learner_threads:
             t.start()
 
-        # Show the agents training and write summary statistics
+        # Show the agents training
         while True:
             if FLAGS.show_training:
                 for env in envs:

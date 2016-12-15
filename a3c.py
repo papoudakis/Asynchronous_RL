@@ -33,7 +33,6 @@ flags.DEFINE_boolean('testing', False, 'If true, run gym evaluation')
 flags.DEFINE_string('checkpoint_path', 'path/to/recent.ckpt', 'Path to recent checkpoint to use for evaluation')
 flags.DEFINE_integer('num_eval_episodes', 100, 'Number of episodes to run gym evaluation.')
 flags.DEFINE_integer('checkpoint_interval', 600,'Checkpoint the model (i.e. save the parameters) every n ')
-flags.DEFINE_float('decay', 0.99,'Decay of RMSProp Optimizer ')
 flags.DEFINE_string('game_type', 'Doom','Doom or atari game')
 FLAGS = flags.FLAGS
 
@@ -147,22 +146,19 @@ class A3C:
         log_probs = tf.log(tf.clip_by_value(self.policy_values, 1e-20, 1.0))
 
         # compute entropy
-        entropy = -tf.reduce_sum(self.policy_values * log_probs, reduction_indices=1)
+        entropy = -tf.reduce_sum(self.policy_values * log_probs)
 
         # policy network loss 
         p_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions, [1]) * tf.stop_gradient(advantage)) - FLAGS.BETA * entropy
-        print p_loss.get_shape()
+
         # value network loss
         v_loss = tf.reduce_sum(tf.square(advantage))
-        print v_loss.get_shape()
+
         # total loss
         cost = p_loss + 0.5 * v_loss
-        print cost.get_shape()
-        # define variable learning rate
-        self.learning_rate = tf.placeholder(tf.float32, shape=[])
 
         # define optimazation method
-        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=FLAGS.decay)
+        optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate)
 
         # define traininf function
         self.grad_update = optimizer.minimize(cost)
@@ -222,10 +218,6 @@ class A3C:
                 clipped_reward = np.clip(reward, -1, 1)
                 prev_reward.append(clipped_reward)
 
-                # decrease learning rate
-                if self.lr > 0:
-                    self.lr -= FLAGS.learning_rate / self.TMAX
-
                 # Update the state and global counters
                 state = new_state
                 self.T += 1
@@ -256,8 +248,7 @@ class A3C:
             #update q value network
             self.session.run(self.grad_update, feed_dict = {self.state: states,
                                                           self.actions: actions,
-                                                          self.targets: targets,
-                                                          self.learning_rate: self.lr})
+                                                          self.targets: targets})
                 
             if done:
                 print "THREAD:", thread_id, "/ TIME", self.T, "/ TIMESTEP", counter, "/ REWARD", episode_reward
@@ -276,15 +267,13 @@ class A3C:
             
         # Initialize variables
         self.session.run(tf.initialize_all_variables())
-        # inititalize learning rate
-        self.lr = FLAGS.learning_rate
         
         # Start num_concurrent actor-learner training threads
         actor_learner_threads = [threading.Thread(target=self.actor_learner_thread, args=( envs[thread_id], thread_id, num_actions)) for thread_id in range(FLAGS.num_concurrent)]
         for t in actor_learner_threads:
             t.start()
 
-        # Show the agents training and write summary statistics
+        # Show the agents training
         while True:
             if FLAGS.show_training:
                 for env in envs:
