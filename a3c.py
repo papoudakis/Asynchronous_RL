@@ -24,7 +24,7 @@ flags.DEFINE_integer('tmax', 80000000, 'Number of training timesteps.')
 flags.DEFINE_integer('width', 84, 'Scale screen to this width.')
 flags.DEFINE_integer('height', 84, 'Scale screen to this height.')
 flags.DEFINE_integer('history_length', 4, 'Use this number of recent screens as the environment state.')
-flags.DEFINE_float('learning_rate', 0.0007, 'Initial learning rate.')
+flags.DEFINE_float('learning_rate', 0.0001, 'Initial learning rate.')
 flags.DEFINE_float('gamma', 0.99, 'Reward discount rate.')
 flags.DEFINE_float('BETA', 0.01, 'factor of regularazation.')
 flags.DEFINE_string('checkpoint_dir', '/tmp/checkpoints/', 'Directory for storing model checkpoints')
@@ -32,7 +32,7 @@ flags.DEFINE_boolean('show_training', True, 'If true, have gym render evironment
 flags.DEFINE_boolean('testing', False, 'If true, run gym evaluation')
 flags.DEFINE_string('checkpoint_path', 'path/to/recent.ckpt', 'Path to recent checkpoint to use for evaluation')
 flags.DEFINE_integer('num_eval_episodes', 100, 'Number of episodes to run gym evaluation.')
-flags.DEFINE_integer('checkpoint_interval', 600,'Checkpoint the model (i.e. save the parameters) every n ')
+flags.DEFINE_integer('checkpoint_interval', 6000000,'Checkpoint the model (i.e. save the parameters) every n ')
 flags.DEFINE_string('game_type', 'Doom','Doom or atari game')
 FLAGS = flags.FLAGS
 
@@ -128,38 +128,39 @@ class A3C:
             self.update_value.append([self.v_params[i][j].assign(self.value_model_params[j]) for j in range(len(self.v_params[i]))])
             
             
-        # operations for training model
-
         # placeholder for actions
         self.actions = tf.placeholder("float", [None, num_actions])
-
+        
         # placeholder for targets
         self.targets = tf.placeholder("float", [None])
         
         #compute advantage
         advantage = self.targets - self.value
-
+        
         # now we will compute the cost for policy networkc which is:
         # -[log(policy(a|s, theta) )*(R - value(s, theta')) + b*entropy]
-
+        
         # compute log probs
         log_probs = tf.log(tf.clip_by_value(self.policy_values, 1e-20, 1.0))
-
+        
         # compute entropy
         entropy = -tf.reduce_sum(self.policy_values * log_probs)
-
-        # policy network loss 
-        p_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions, [1]) * tf.stop_gradient(advantage)) - FLAGS.BETA * entropy
+        
+        # policy network loss       
+        p_loss = -tf.reduce_sum(tf.reduce_sum(log_probs * self.actions, [1]) * tf.stop_gradient(advantage)) -  FLAGS.BETA * entropy
 
         # value network loss
         v_loss = tf.reduce_sum(tf.square(advantage))
 
         # total loss
         cost = p_loss + 0.5 * v_loss
-
+        
+        # define variable learning rate
+        self.learning_rate = tf.placeholder(tf.float32, shape=[])
+        
         # define optimazation method
-        optimizer = tf.train.AdamOptimizer(FLAGS.learning_rate)
-
+        optimizer = tf.train.AdamOptimizer(0.0001)
+        
         # define traininf function
         self.grad_update = optimizer.minimize(cost)
 

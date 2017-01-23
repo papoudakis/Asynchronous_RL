@@ -42,8 +42,8 @@ def create_model(num_actions, agent_history_length, resized_width, resized_heigh
     with tf.device("/cpu:0"):
         state = tf.placeholder("float", [None, t_max, agent_history_length, resized_width, resized_height])
         inputs = Input(shape=(t_max, agent_history_length, resized_width, resized_height))
-        model = TimeDistributed(Convolution2D(nb_filter=16, nb_row=8, nb_col=8, subsample=(4,4), activation='relu', border_mode='same'))(inputs)
-        model = TimeDistributed(Convolution2D(nb_filter=32, nb_row=4, nb_col=4, subsample=(2,2), activation='relu', border_mode='same'))(model)
+        model = TimeDistributed(Convolution2D(nb_filter=16, nb_row=8, nb_col=8, subsample=(4,4), activation='relu'))(inputs)
+        model = TimeDistributed(Convolution2D(nb_filter=32, nb_row=4, nb_col=4, subsample=(2,2), activation='relu'))(model)
         model = TimeDistributed(Flatten())(model)
         model = TimeDistributed(Dense(output_dim=256, activation='relu'))(model)
         model = LSTM(256, return_sequences= False)(model)

@@ -33,14 +33,14 @@ class Env(object):
                 print "Doing workaround for DoomHealthGathering-v0"
                 self.gym_actions = [13, 14, 15]
         elif self.game_type == 'Atari':
-            if (gym_env.spec.id == "Breakout-v0"):
+            if gym_env.spec.id == "Breakout-v0" or gym_env.spec.id == "Pong-v0":
                 self.gym_actions = [1,2,3]
             else:
                 self.gym_actions = len(self.env.action_space)
         else:
             print "Error: game_type MUST be Doom or Atari"
             exit()
-        
+        self.gym_actions = [1,2,3]
         # Screen buffer of size AGENT_HISTORY_LENGTH to be able
         # to build state arrays of size [1, AGENT_HISTORY_LENGTH, width, height]
         self.state_buffer = deque()
