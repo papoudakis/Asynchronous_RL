@@ -20,12 +20,12 @@ flags.DEFINE_integer('tmax', 80000000, 'Number of training timesteps.')
 flags.DEFINE_integer('width', 84, 'Scale screen to this width.')
 flags.DEFINE_integer('height', 84, 'Scale screen to this height.')
 flags.DEFINE_integer('history_length', 4, 'Use this number of recent screens as the environment state.')
-flags.DEFINE_integer('network_update_frequency', 32, 'Frequency with which each actor learner thread does an async gradient update')
-flags.DEFINE_integer('target_network_update_frequency', 10000, 'Reset the target network every n timesteps')
+flags.DEFINE_integer('network_update_frequency', 5, 'Frequency with which each actor learner thread does an async gradient update')
+flags.DEFINE_integer('target_network_update_frequency', 40000, 'Reset the target network every n timesteps')
 flags.DEFINE_float('learning_rate', 0.0001, 'Initial learning rate.')
 flags.DEFINE_float('decay', 0.99, 'decay of rmsprop.')
 flags.DEFINE_float('gamma', 0.99, 'Reward discount rate.')
-flags.DEFINE_integer('anneal_epsilon_timesteps', 1000000, 'Number of timesteps to anneal epsilon.')
+flags.DEFINE_integer('anneal_epsilon_timesteps', 4000000, 'Number of timesteps to anneal epsilon.')
 flags.DEFINE_string('checkpoint_dir', '/tmp/checkpoints/', 'Directory for storing model checkpoints')
 flags.DEFINE_boolean('show_training', True, 'If true, have gym render evironments during training')
 flags.DEFINE_boolean('testing', False, 'If true, run gym evaluation')
@@ -39,7 +39,7 @@ FLAGS = flags.FLAGS
 T = 0
 TMAX = FLAGS.tmax
 
-t_max = 32
+t_max = 5
 
 def create_model(num_actions, agent_history_length, resized_width, resized_height):
     with tf.device("/cpu:0"):
@@ -95,6 +95,21 @@ class N_Steps_DQN:
         # operation for updating target's parameters
         self.update_target = [self.target_model_params[i].assign(self.model_params[i]) for i in range(len(self.target_model_params))]
 
+        self.local_states = []
+        self.local_model = []
+        self.params = []
+        self.update_local_model = []
+        self.local_values=[]
+        self.optimizers = []
+        
+        for i in range(FLAGS.num_concurrent):
+            s, m = create_model(num_actions, FLAGS.history_length, FLAGS.width, FLAGS.height)
+            self.local_states.append(s)
+            self.local_model.append(m)
+            self.params.append(m.trainable_weights)
+            self.local_values.append(m(s))
+            self.update_local_model.append([self.params[i][j].assign(self.model_params[j]) for j in range(len(self.params[i]))])
+            self.optimizers.append(tf.train.AdamOptimizer(FLAGS.learning_rate))
         print "creating operations"
         # operations for training model
 
@@ -112,15 +127,11 @@ class N_Steps_DQN:
 
         # define cost
         cost = tf.reduce_mean(tf.square(self.targets - action_q_values))
-
-        # define variable learning rate
-        self.learning_rate = tf.placeholder(tf.float32, shape=[])
         
-        # define optimazation method
-        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay= FLAGS.decay)
-
-        # define traininf function
-        self.grad_update = optimizer.minimize(cost, var_list=self.model_params)
+        # define training function
+        self.grad_update = []
+        for i in range(FLAGS.num_concurrent):
+            self.grad_update.append(self.optimizers[i].minimize(cost, var_list=self.model_params))
 
     def sample_final_epsilon(self):
         possible_epsilon = [0.1]*4000 + [0.5]*3000 + [0.01]*3000
@@ -157,10 +168,11 @@ class N_Steps_DQN:
 
             t = 0
             t_start = t
+            self.session.run(self.update_local_model[thread_id])
             
             while not (done or ((t - t_start)  == t_max)):
                 # forward pass of network. Get Q(s,a)
-                q_values = self.q_values.eval(session = self.session, feed_dict = {self.state : [state]})
+                q_values = self.local_values[thread_id].eval(session = self.session, feed_dict = {self.local_states[thread_id] : [state]})
 
                 # define list of actions. All values are zeros except , the
                 # value of action that is executed
@@ -181,10 +193,6 @@ class N_Steps_DQN:
                 if epsilon > final_epsilon:
                     epsilon -= (initial_epsilon - final_epsilon) / FLAGS.anneal_epsilon_timesteps
 
-                # decrease learning rate
-                if self.lr > 0:
-                    self.lr -= FLAGS.learning_rate / self.TMAX
-
                 # Gym excecutes action in game environment on behalf of actor-learner
                 new_state, reward, done = env.step(action_index)
 
@@ -203,15 +211,17 @@ class N_Steps_DQN:
                 mean_q += np.max(q_values)
                 
                 # update_target_network
-                if self.T % FLAGS.target_network_update_frequency == 0:
+                if self.T % FLAGS.target_network_update_frequency==0:
+                    print "Target Network Updated"
                     self.session.run(self.update_target)
     
                 # Save model progress
-                if counter % FLAGS.checkpoint_interval == 0:
+                if self.T % FLAGS.checkpoint_interval < 400:
+                    self.T += 400
                     if FLAGS.game_type == 'Doom':
-                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = counter)
+                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game.split("/")[1] + ".ckpt" , global_step = self.T)
                     else:
-                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game + ".ckpt" , global_step = counter)
+                        self.saver.save(self.session, FLAGS.checkpoint_dir+"/" + FLAGS.game + ".ckpt" , global_step = self.T)
 
             if done:
                 R_t = 0
@@ -225,19 +235,31 @@ class N_Steps_DQN:
                 targets[i] = R_t
 
             #update q value network
-            self.session.run(self.grad_update, feed_dict = {self.state: states,
+            self.session.run(self.grad_update[thread_id], feed_dict = {self.state: states,
                                                           self.actions: actions,
-                                                          self.targets: targets,
-                                                          self.learning_rate: self.lr})
+                                                          self.targets: targets})
 
             if done:
                 print "THREAD:", thread_id, "/ TIME", self.T, "/ TIMESTEP", counter, "/ EPSILON", epsilon, "/ REWARD", episode_reward, "/ Q_MAX %.4f" % (mean_q/float(frames)), "/ EPSILON PROGRESS", counter/float(FLAGS.anneal_epsilon_timesteps)
+                episode_reward = 0
+                file_path = 'rewards'
+                try:
+                    with open(file_path,'a+') as f:
+                        f.write(str(episode_reward) + ', '+ str((mean_q/float(frames)))+'\n')
+                except IOError:
+                    with open(file_path,'w+') as f:
+                        f.write(str(episode_reward) + ', ' + str((mean_q/float(frames))) +'\n')
+                f.close()
+                # Get initial game observation
                 episode_reward = 0
                 mean_q = 0
                 frames = 0
                 state = env.get_initial_state()
 
     def train(self, num_actions):
+        
+        # Initialize variables
+        self.session.run(tf.initialize_all_variables())
 
         # Initialize target network weights
         self.session.run(self.update_target)
@@ -250,8 +272,7 @@ class N_Steps_DQN:
         
         if not os.path.exists(FLAGS.checkpoint_dir):
             os.makedirs(FLAGS.checkpoint_dir)
-        # Initialize variables
-        self.session.run(tf.initialize_all_variables())
+        
 
 
         # Start num_concurrent actor-learner training threads
